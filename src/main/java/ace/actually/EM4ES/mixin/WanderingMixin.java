@@ -1,5 +1,6 @@
 package ace.actually.EM4ES.mixin;
 
+import ace.actually.EM4ES.EM4ES;
 import ace.actually.EM4ES.ExplorerMapTradeFactory;
 import net.minecraft.entity.EntityType;
 import net.minecraft.entity.passive.MerchantEntity;
@@ -23,12 +24,11 @@ public abstract class WanderingMixin extends MerchantEntity {
     protected void addCustomMapTrades(CallbackInfo ci) {
         TradeOfferList offers = this.getOffers();
 
-        // --- NEW LOGIC: ADD 3 MAPS ---
-        for (int i = 0; i < 3; i++) {
-            // Create a trade for a single-use map that costs 10 Trial Keys and searches 1000 blocks.
+        // Use the configurable values loaded from the properties file.
+        for (int i = 0; i < EM4ES.WANDERING_TRADER_MAP_COUNT; i++) {
             TradeOffer newOffer = new ExplorerMapTradeFactory(
-                    1,     // maxUses
-                    1000   // searchRadius
+                    1, // Single use
+                    EM4ES.WANDERING_TRADER_SEARCH_RADIUS
             ).create(this, this.random);
 
             if (newOffer != null) {
