@@ -1,7 +1,9 @@
 package ace.actually.EM4ES;
 
 import com.mojang.datafixers.util.Pair;
+import net.minecraft.component.DataComponentTypes;
 import net.minecraft.entity.Entity;
+import net.minecraft.item.FilledMapItem;
 import net.minecraft.item.ItemStack;
 import net.minecraft.registry.Registry;
 import net.minecraft.registry.RegistryKey;
@@ -9,6 +11,7 @@ import net.minecraft.registry.RegistryKeys;
 import net.minecraft.registry.entry.RegistryEntry;
 import net.minecraft.registry.entry.RegistryEntryList;
 import net.minecraft.server.world.ServerWorld;
+import net.minecraft.text.Text;
 import net.minecraft.util.Identifier;
 import net.minecraft.util.math.BlockPos;
 import net.minecraft.util.math.random.Random;
@@ -33,31 +36,22 @@ public class ExplorerMapTradeFactory implements TradeOffers.Factory {
         this.searchRadiusInChunks = searchRadiusInChunks;
     }
 
-    // --- STANDARD METHOD (Runs on Main Thread usually) ---
     @Nullable
     @Override
     public TradeOffer create(Entity entity, Random random) {
         if (!(entity.getWorld() instanceof ServerWorld world) || !(entity instanceof VillagerDataAccessor accessor)) {
             return null;
         }
-
-        // 1. Find structure (Sync or Async, depending on caller. Here it's direct.)
         StructureSearchResult result = findStructure(world, entity.getBlockPos(), accessor.getOfferedStructureMaps(), searchRadiusInChunks);
-
         if (result == null) return null;
-
-        // 2. Create Map (MUST BE ON MAIN THREAD)
         return createTradeFromSearch(world, result, accessor.getOfferedStructureMaps());
     }
 
-    // --- HELPER: Find Structure (Safe to run ASYNC) ---
+    // --- ASYNC SAFE: Find the location ---
     @Nullable
     public static StructureSearchResult findStructure(ServerWorld world, BlockPos origin, Set<Identifier> skipIds, int radiusChunks) {
         Registry<Structure> structureRegistry = world.getRegistryManager().get(RegistryKeys.STRUCTURE);
-
-        if (CACHED_STRUCTURE_KEYS == null) {
-            initializeCache(structureRegistry);
-        }
+        if (CACHED_STRUCTURE_KEYS == null) initializeCache(structureRegistry);
 
         ChunkGenerator chunkGenerator = world.getChunkManager().getChunkGenerator();
         int searchRadiusBlocks = radiusChunks * 16;
@@ -93,16 +87,26 @@ public class ExplorerMapTradeFactory implements TradeOffers.Factory {
                     return new StructureSearchResult(result.getFirst(), foundId);
                 }
             } catch (Exception e) {
-                // Skip broken structures
+                // Ignore
             }
         }
         return null;
     }
 
-    // --- HELPER: Create Trade (MUST BE ON MAIN THREAD) ---
+    // --- MAIN THREAD: Create Item (Optimized) ---
     @Nullable
     public TradeOffer createTradeFromSearch(ServerWorld world, StructureSearchResult result, Set<Identifier> alreadyOffered) {
-        ItemStack mapStack = EM4ES.makeMapFromPos(world, result.pos(), result.id());
+        // Create basic map item (Scale 2, shows decorations)
+        ItemStack mapStack = FilledMapItem.createMap(world, result.pos().getX(), result.pos().getZ(), (byte) 2, true, true);
+
+        // --- CRITICAL PERFORMANCE FIX ---
+        // We do NOT call FilledMapItem.fillExplorationMap(world, mapStack).
+        // That method forces chunk generation on the main thread.
+        // Skipping it leaves the map blank (paper color) but keeps the server running smooth.
+
+        // Add the Target Icon and Name
+        EM4ES.addDecorationsAndColor(mapStack, result.pos(), result.id().toString(), result.id().hashCode());
+        mapStack.set(DataComponentTypes.CUSTOM_NAME, Text.literal(EM4ES.formatName(result.id().getPath()) + " Map"));
 
         if (!mapStack.isEmpty()) {
             alreadyOffered.add(result.id());
