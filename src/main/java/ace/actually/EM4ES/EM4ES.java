@@ -76,7 +76,7 @@ public class EM4ES implements ModInitializer {
     }
 
     private void onServerStarted(MinecraftServer server) {
-        File configFile = new File("./config/EM4ES/StructureCosts.properties");
+        File configFile = new File("./config/EM4ES/EM4ES.properties");
         try {
             if (!configFile.exists()) {
                 LOGGER.info("Structure cost config not found. Creating a new default one...");
