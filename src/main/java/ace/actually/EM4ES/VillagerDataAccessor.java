@@ -3,7 +3,13 @@ package ace.actually.EM4ES;
 import net.minecraft.util.Identifier;
 import java.util.Set;
 
-// This is a "duck interface" for our mixin.
 public interface VillagerDataAccessor {
     Set<Identifier> getOfferedStructureMaps();
+
+    boolean isSearching();
+    void setSearching(boolean searching);
+
+    // NEW METHODS FOR LEVEL MEMORY
+    int getLastMapLevelGenerated();
+    void setLastMapLevelGenerated(int level);
 }

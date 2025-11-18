@@ -6,7 +6,9 @@
   "mixins": [
     "VillagerEntityMixin",
     "WanderingMixin",
-    "WanderingTraderEntityMixin"
+    "WanderingTraderEntityMixin",
+    "VillagerEntityMixinTrades",
+    "VillagerEntityMixinTradeCycle"
   ],
 
   "injectors": {

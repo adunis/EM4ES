@@ -28,8 +28,7 @@ public abstract class WanderingMixin extends MerchantEntity {
 
         ExplorerMapTradeFactory factory = new ExplorerMapTradeFactory(
                 1, // maxUses per map offer
-                EM4ES.WANDERING_TRADER_SEARCH_RADIUS,
-                EM4ES.WANDERING_TRADER_MAP_COUNT // This argument is now more relevant for the loop below
+                EM4ES.WANDERING_TRADER_SEARCH_RADIUS
         );
 
         // Try to add multiple unique map trades, up to WANDERING_TRADER_MAP_COUNT

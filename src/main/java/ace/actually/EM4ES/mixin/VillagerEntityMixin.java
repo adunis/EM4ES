@@ -16,33 +16,59 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 import java.util.HashSet;
 import java.util.Set;
 
-// CHANGE 1: Made the class abstract
 @Mixin(VillagerEntity.class)
 public abstract class VillagerEntityMixin implements VillagerDataAccessor {
 
-    // CHANGE 2: Removed the 'final' keyword
     @Unique
     private Set<Identifier> em4es_offeredStructureMaps = new HashSet<>();
+    @Unique
+    private boolean em4es_isSearching = false;
+
+    // NUOVO CAMPO PER LA MEMORIA DEL LIVELLO
+    @Unique
+    private int em4es_lastMapLevelGenerated = 0;
 
     @Override
     public Set<Identifier> getOfferedStructureMaps() {
         return this.em4es_offeredStructureMaps;
     }
+    @Override
+    public boolean isSearching() {
+        return this.em4es_isSearching;
+    }
+    @Override
+    public void setSearching(boolean searching) {
+        this.em4es_isSearching = searching;
+    }
+
+    // NUOVE IMPLEMENTAZIONI
+    @Override
+    public int getLastMapLevelGenerated() {
+        return this.em4es_lastMapLevelGenerated;
+    }
+    @Override
+    public void setLastMapLevelGenerated(int level) {
+        this.em4es_lastMapLevelGenerated = level;
+    }
+
 
     @Inject(method = "writeCustomDataToNbt", at = @At("TAIL"))
     private void writeOfferedMapsToNbt(NbtCompound nbt, CallbackInfo ci) {
-        NbtList offeredList = new NbtList();
-        // Check to prevent writing an empty list if it's not necessary
-        if (!this.em4es_offeredStructureMaps.isEmpty()) {
+        // Salva le mappe offerte
+        if (!em4es_offeredStructureMaps.isEmpty()) {
+            NbtList offeredList = new NbtList();
             for (Identifier id : this.em4es_offeredStructureMaps) {
                 offeredList.add(NbtString.of(id.toString()));
             }
             nbt.put("EM4ES_OfferedMaps", offeredList);
         }
+        // SALVA LA NUOVA MEMORIA
+        nbt.putInt("EM4ES_LastMapLevel", this.em4es_lastMapLevelGenerated);
     }
 
     @Inject(method = "readCustomDataFromNbt", at = @At("TAIL"))
     private void readOfferedMapsFromNbt(NbtCompound nbt, CallbackInfo ci) {
+        // Carica le mappe offerte
         if (nbt.contains("EM4ES_OfferedMaps", NbtElement.LIST_TYPE)) {
             NbtList offeredList = nbt.getList("EM4ES_OfferedMaps", NbtElement.STRING_TYPE);
             this.em4es_offeredStructureMaps.clear();
@@ -53,5 +79,7 @@ public abstract class VillagerEntityMixin implements VillagerDataAccessor {
                 }
             }
         }
+        // CARICA LA NUOVA MEMORIA
+        this.em4es_lastMapLevelGenerated = nbt.getInt("EM4ES_LastMapLevel");
     }
 }

@@ -1,43 +1,32 @@
-// src/main/java/ace/actually/EM4ES/ExplorerMapTradeFactory.java
 package ace.actually.EM4ES;
 
-import it.unimi.dsi.fastutil.longs.LongSet;
+import com.mojang.datafixers.util.Pair;
 import net.minecraft.entity.Entity;
 import net.minecraft.item.ItemStack;
 import net.minecraft.registry.Registry;
+import net.minecraft.registry.RegistryKey;
 import net.minecraft.registry.RegistryKeys;
 import net.minecraft.registry.entry.RegistryEntry;
-import net.minecraft.server.world.ServerChunkManager;
+import net.minecraft.registry.entry.RegistryEntryList;
 import net.minecraft.server.world.ServerWorld;
-import net.minecraft.structure.StructureStart;
 import net.minecraft.util.Identifier;
 import net.minecraft.util.math.BlockPos;
-import net.minecraft.util.math.ChunkPos;
 import net.minecraft.util.math.random.Random;
 import net.minecraft.village.TradeOffer;
 import net.minecraft.village.TradeOffers;
 import net.minecraft.village.TradedItem;
-import net.minecraft.world.chunk.WorldChunk;
 import net.minecraft.world.gen.structure.Structure;
 import org.jetbrains.annotations.Nullable;
 
-import java.util.Map;
-import java.util.Optional;
-import java.util.Set;
+import java.util.*;
 
 public class ExplorerMapTradeFactory implements TradeOffers.Factory {
     private final int maxUses;
-    private final int searchRadiusInChunks;
-    private final int mapCount;
+    private final int searchRadiusInBlocks;
 
-    public ExplorerMapTradeFactory(int maxUses, int searchRadius, int mapCount) {
+    public ExplorerMapTradeFactory(int maxUses, int searchRadiusInChunks) {
         this.maxUses = maxUses;
-        this.searchRadiusInChunks = searchRadius;
-        this.mapCount = mapCount;
-    }
-
-    public ExplorerMapTradeFactory(int maxUses, int searchRadius) {
-        this(maxUses, searchRadius, 1);
+        this.searchRadiusInBlocks = searchRadiusInChunks * 16;
     }
 
     @Nullable
@@ -47,68 +36,72 @@ public class ExplorerMapTradeFactory implements TradeOffers.Factory {
             return null;
         }
 
-        EM4ES.LOGGER.info("Starting map trade search for entity {} with radius {} chunks.", entity.getUuidAsString(), this.searchRadiusInChunks);
-
         Set<Identifier> alreadyOffered = accessor.getOfferedStructureMaps();
-        EM4ES.LOGGER.info("Entity has already been offered {} maps.", alreadyOffered.size());
-
-        ServerChunkManager chunkManager = world.getChunkManager();
-        ChunkPos centerChunk = entity.getChunkPos();
+        BlockPos origin = entity.getBlockPos();
         Registry<Structure> structureRegistry = world.getRegistryManager().get(RegistryKeys.STRUCTURE);
 
-        for (int radius = 0; radius <= this.searchRadiusInChunks; radius++) {
-            for (int dx = -radius; dx <= radius; dx++) {
-                for (int dz = -radius; dz <= radius; dz++) {
-                    if (radius > 0 && Math.abs(dx) != radius && Math.abs(dz) != radius) {
-                        continue;
-                    }
+        List<RegistryKey<Structure>> possibleStructures = new ArrayList<>();
+        for (Identifier id : structureRegistry.getIds()) {
+            if (!alreadyOffered.contains(id) && EM4ES.getCostForStructure(id) != null) {
+                structureRegistry.getKey(structureRegistry.get(id)).ifPresent(possibleStructures::add);
+            }
+        }
 
-                    ChunkPos currentChunkPos = new ChunkPos(centerChunk.x + dx, centerChunk.z + dz);
-                    WorldChunk chunk = chunkManager.getWorldChunk(currentChunkPos.x, currentChunkPos.z, false);
+        if (possibleStructures.isEmpty()) {
+            EM4ES.LOGGER.warn("No new valid structure found to search for entity {}.", entity.getUuidAsString());
+            return null;
+        }
 
-                    if (chunk != null) {
-                        Map<Structure, LongSet> references = chunk.getStructureReferences();
-                        if (references != null && !references.isEmpty()) {
-                            EM4ES.LOGGER.info("Found {} structure references in chunk at {}", references.size(), currentChunkPos.toString());
+        Collections.shuffle(possibleStructures);
+        List<RegistryKey<Structure>> searchSample = possibleStructures.subList(0, Math.min(possibleStructures.size(), EM4ES.SEARCH_SAMPLE_SIZE));
 
-                            for (Structure structure : references.keySet()) {
-                                Identifier structureId = structureRegistry.getId(structure);
+        EM4ES.LOGGER.info("Searching a sample of {} structures (out of {} possible).", searchSample.size(), possibleStructures.size());
 
-                                if (structureId == null) continue;
-
-                                if (alreadyOffered.contains(structureId)) {
-                                    //EM4ES.LOGGER.info("Skipping {}: Already offered.", structureId);
-                                    continue;
-                                }
-
-                                if (EM4ES.getCostForStructure(structureId) == null) {
-                                    //EM4ES.LOGGER.info("Skipping {}: No cost defined.", structureId);
-                                    continue;
-                                }
-
-                                EM4ES.LOGGER.info("Found potential new structure: {}", structureId);
-                                RegistryEntry<Structure> entryOpt = structureRegistry.getEntry(structure);
-                                StructureStart structureStart = chunk.getStructureStart(entryOpt.value());
-
-                                if (structureStart != null) {
-                                    BlockPos structurePos = structureStart.getPos().getStartPos();
-                                    ItemStack mapStack = EM4ES.makeMapFromPos(world, structurePos, structureId);
-
-                                    if (!mapStack.isEmpty()) {
-                                        EM4ES.LOGGER.info("SUCCESS! Creating trade for map to {} at {}", structureId, structurePos);
-                                        alreadyOffered.add(structureId);
-                                        MapCost cost = EM4ES.getCostForStructure(structureId);
-                                        TradedItem buyItem = new TradedItem(cost.item(), cost.count());
-                                        return new TradeOffer(buyItem, Optional.empty(), mapStack, this.maxUses, 15, 0.2F);
-                                    }
-                                }
-                            }
-                        }
-                    }
+        List<Pair<BlockPos, RegistryEntry<Structure>>> nearbyCandidates = new ArrayList<>();
+        for (RegistryKey<Structure> structureKey : searchSample) {
+            Optional<RegistryEntry.Reference<Structure>> entryOptional = structureRegistry.getEntry(structureKey);
+            if (entryOptional.isPresent()) {
+                RegistryEntryList<Structure> searchList = RegistryEntryList.of(entryOptional.get());
+                Pair<BlockPos, RegistryEntry<Structure>> result = world.getChunkManager().getChunkGenerator().locateStructure(
+                        world, searchList, origin, searchRadiusInBlocks, false
+                );
+                if (result != null) {
+                    nearbyCandidates.add(result);
                 }
             }
         }
-        EM4ES.LOGGER.info("Search finished. No new valid structures found to offer a map for.");
+
+        if (nearbyCandidates.isEmpty()) {
+            EM4ES.LOGGER.warn("No structure found in the sample for entity {}.", entity.getUuidAsString());
+            return null;
+        }
+
+        // --- THE FIX IS HERE ---
+        // Sort candidates by horizontal distance (ignoring Y-axis)
+        nearbyCandidates.sort(Comparator.comparingDouble(pair -> {
+            BlockPos pos = pair.getFirst();
+            double dx = pos.getX() - origin.getX();
+            double dz = pos.getZ() - origin.getZ();
+            return dx * dx + dz * dz; // Manual calculation of squared distance on X and Z
+        }));
+        // --- END OF FIX ---
+
+        Pair<BlockPos, RegistryEntry<Structure>> bestCandidate = nearbyCandidates.get(0);
+
+        BlockPos structurePos = bestCandidate.getFirst();
+        Identifier structureId = bestCandidate.getSecond().getKey().orElseThrow().getValue();
+
+        EM4ES.LOGGER.info("Closest structure chosen from sample: {} at {}", structureId, structurePos);
+
+        ItemStack mapStack = EM4ES.makeMapFromPos(world, structurePos, structureId);
+        if (!mapStack.isEmpty()) {
+            alreadyOffered.add(structureId);
+            MapCost cost = EM4ES.getCostForStructure(structureId);
+            TradedItem buyItem = new TradedItem(cost.item(), cost.count());
+
+            return new TradeOffer(buyItem, mapStack, this.maxUses, 15, 0.2F);
+        }
+
         return null;
     }
 }

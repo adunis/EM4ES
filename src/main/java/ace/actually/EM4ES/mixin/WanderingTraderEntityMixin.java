@@ -21,11 +21,25 @@ public abstract class WanderingTraderEntityMixin implements VillagerDataAccessor
 
     @Unique
     private Set<Identifier> em4es_offeredStructureMaps = new HashSet<>();
+    @Unique
+    private boolean em4es_isSearching = false;
+
+    @Unique
+    private int em4es_lastMapLevelGenerated = 0;
+
+    @Override public Set<Identifier> getOfferedStructureMaps() { return this.em4es_offeredStructureMaps; }
+    @Override public boolean isSearching() { return this.em4es_isSearching; }
+    @Override public void setSearching(boolean searching) { this.em4es_isSearching = searching; }
 
     @Override
-    public Set<Identifier> getOfferedStructureMaps() {
-        return this.em4es_offeredStructureMaps;
+    public int getLastMapLevelGenerated() {
+        return this.em4es_lastMapLevelGenerated;
     }
+    @Override
+    public void setLastMapLevelGenerated(int level) {
+        this.em4es_lastMapLevelGenerated = level;
+    }
+
 
     @Inject(method = "writeCustomDataToNbt", at = @At("TAIL"))
     private void writeOfferedMapsToNbt(NbtCompound nbt, CallbackInfo ci) {
@@ -36,6 +50,7 @@ public abstract class WanderingTraderEntityMixin implements VillagerDataAccessor
             }
             nbt.put("EM4ES_OfferedMaps", offeredList);
         }
+        nbt.putInt("EM4ES_LastMapLevel", this.em4es_lastMapLevelGenerated);
     }
 
     @Inject(method = "readCustomDataFromNbt", at = @At("TAIL"))
@@ -50,5 +65,6 @@ public abstract class WanderingTraderEntityMixin implements VillagerDataAccessor
                 }
             }
         }
+        this.em4es_lastMapLevelGenerated = nbt.getInt("EM4ES_LastMapLevel");
     }
 }
