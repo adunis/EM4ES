@@ -21,6 +21,7 @@ This lightweight, server-side mod expands the exploration experience by introduc
     *   The **Wandering Trader** will spawn with a stock of **5** random structure maps (configurable).
 *   **Fully Configurable Economy:** The cost for every single map is completely customizable! By default, all maps cost **1 Trial Key**, but you can change this to any item and any amount you want.
 *   **Controlled Search Radius:** To ensure balanced gameplay, search radii are configurable per trader type and villager level (e.g., Novice searches 500 blocks, Master searches 2500 blocks).
+*   **🔄 Infinite Restocking System:** Never run out of adventures! **EM4ES** includes a restocking system that allows you to farm maps without lag. Instead of the trade simply locking (Red X), it will briefly turn into a **"Restocking..."** icon (represented by a Clock).
 
 ## How It Works
 
