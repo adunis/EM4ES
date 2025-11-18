@@ -13,6 +13,8 @@ import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 
+// Removed unused import: import java.util.List;
+
 @Mixin(WanderingTraderEntity.class)
 public abstract class WanderingMixin extends MerchantEntity {
 
@@ -24,15 +26,21 @@ public abstract class WanderingMixin extends MerchantEntity {
     protected void addCustomMapTrades(CallbackInfo ci) {
         TradeOfferList offers = this.getOffers();
 
-        // Use the configurable values loaded from the properties file.
-        for (int i = 0; i < EM4ES.WANDERING_TRADER_MAP_COUNT; i++) {
-            TradeOffer newOffer = new ExplorerMapTradeFactory(
-                    1, // Single use
-                    EM4ES.WANDERING_TRADER_SEARCH_RADIUS
-            ).create(this, this.random);
+        ExplorerMapTradeFactory factory = new ExplorerMapTradeFactory(
+                1, // maxUses per map offer
+                EM4ES.WANDERING_TRADER_SEARCH_RADIUS,
+                EM4ES.WANDERING_TRADER_MAP_COUNT // This argument is now more relevant for the loop below
+        );
 
-            if (newOffer != null) {
-                offers.add(newOffer);
+        // Try to add multiple unique map trades, up to WANDERING_TRADER_MAP_COUNT
+        for (int i = 0; i < EM4ES.WANDERING_TRADER_MAP_COUNT; i++) {
+            TradeOffer newTrade = factory.create(this, this.random);
+            if (newTrade != null) {
+                offers.add(newTrade);
+            } else {
+                // If the factory returns null, it means no more unique maps could be found
+                // within the search radius or that haven't already been offered.
+                break;
             }
         }
     }
