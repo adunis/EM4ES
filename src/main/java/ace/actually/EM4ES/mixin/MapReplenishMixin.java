@@ -2,6 +2,8 @@ package ace.actually.EM4ES.mixin;
 
 import ace.actually.EM4ES.EM4ES;
 import ace.actually.EM4ES.ExplorerMapTradeFactory;
+import ace.actually.EM4ES.StructureSearchResult;
+import ace.actually.EM4ES.VillagerDataAccessor;
 import net.minecraft.entity.EntityType;
 import net.minecraft.entity.passive.MerchantEntity;
 import net.minecraft.entity.passive.PassiveEntity;
@@ -18,6 +20,7 @@ import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
+import net.minecraft.server.world.ServerWorld;
 
 @Mixin(MerchantEntity.class)
 public abstract class MapReplenishMixin extends PassiveEntity {
@@ -28,63 +31,60 @@ public abstract class MapReplenishMixin extends PassiveEntity {
 
     @Inject(method = "trade", at = @At("TAIL"))
     private void onTradeCompleted(TradeOffer offer, CallbackInfo ci) {
-        // 1. Client-side check
         if (this.getWorld().isClient) return;
 
         MerchantEntity merchant = (MerchantEntity) (Object) this;
+        if (!(merchant instanceof VillagerDataAccessor accessor)) return; // Safety cast
 
-        // 2. Verify Entity Type (Trader or Villager)
         boolean isTrader = merchant instanceof WanderingTraderEntity;
         boolean isVillager = merchant instanceof VillagerEntity;
         if (!isTrader && !isVillager) return;
 
-        // 3. Capture the *current* customer safely
         PlayerEntity rawCustomer = merchant.getCustomer();
-        if (!(rawCustomer instanceof ServerPlayerEntity player)) {
-            return;
-        }
+        if (!(rawCustomer instanceof ServerPlayerEntity player)) return;
 
-        // 4. Check if it was a Map trade and it is now disabled (out of stock)
+        // Check if trade is a map and sold out
         if (offer.getSellItem().getItem() == Items.FILLED_MAP && offer.isDisabled()) {
 
             int searchRadiusInBlocks = getRadiusForMerchant(merchant);
+            int radiusInChunks = Math.max(1, searchRadiusInBlocks / 16);
+            ServerWorld serverWorld = (ServerWorld) this.getWorld();
+
             EM4ES.LOGGER.info("Map sold out. Restocking async...");
 
-            // 5. Async Search
+            // 1. ASYNC SEARCH (Heavy Math, No World Writes)
             EM4ES.MAP_SEARCH_EXECUTOR.submit(() -> {
 
-                // Convert blocks to chunks
-                int radiusInChunks = Math.max(1, searchRadiusInBlocks / 16);
+                StructureSearchResult result = ExplorerMapTradeFactory.findStructure(
+                        serverWorld,
+                        merchant.getBlockPos(),
+                        accessor.getOfferedStructureMaps(),
+                        radiusInChunks
+                );
 
-                ExplorerMapTradeFactory factory = new ExplorerMapTradeFactory(1, radiusInChunks);
-                TradeOffer newOffer = factory.create(merchant, merchant.getRandom());
-
-                // 6. Main Thread Update
-                if (newOffer != null) {
-                    this.getServer().execute(() -> {
+                // 2. MAIN THREAD UPDATE (World Writes / UI)
+                this.getServer().execute(() -> {
+                    if (result != null) {
                         try {
-                            TradeOfferList offers = merchant.getOffers();
-                            int index = offers.indexOf(offer);
+                            // Create the map item and trade offer on the main thread
+                            ExplorerMapTradeFactory factory = new ExplorerMapTradeFactory(1, radiusInChunks);
+                            TradeOffer newOffer = factory.createTradeFromSearch(serverWorld, result, accessor.getOfferedStructureMaps());
 
-                            if (index != -1) {
-                                // Swap the trade in the list logic
-                                offers.set(index, newOffer);
-                                EM4ES.LOGGER.info("Restocked map trade.");
+                            if (newOffer != null) {
+                                TradeOfferList offers = merchant.getOffers();
+                                int index = offers.indexOf(offer);
 
-                                // --- SAFETY CHECK ---
-                                // We must verify the player is STILL trading with this specific merchant.
-                                // If they closed the window during the async search, 'merchant.getCustomer()' will be null.
-                                if (merchant.getCustomer() == player) {
+                                if (index != -1) {
+                                    offers.set(index, newOffer);
+                                    EM4ES.LOGGER.info("Restocked map trade.");
 
-                                    // Also ensure the screen they have open is actually a Merchant Screen
-                                    if (player.currentScreenHandler instanceof MerchantScreenHandler) {
-
-                                        // Send the update packet using the Sync ID of the currently open window
+                                    // Safety: Check if player is still there
+                                    if (merchant.getCustomer() == player && player.currentScreenHandler instanceof MerchantScreenHandler) {
                                         player.sendTradeOffers(
                                                 player.currentScreenHandler.syncId,
                                                 offers,
-                                                0, // <--- levelProgress (Visual XP bar fill). 0 is safe for a refresh.
-                                                merchant.getExperience(), // Total Experience
+                                                0,
+                                                merchant.getExperience(),
                                                 merchant.isLeveledMerchant(),
                                                 merchant.canRefreshTrades()
                                         );
@@ -94,8 +94,8 @@ public abstract class MapReplenishMixin extends PassiveEntity {
                         } catch (Exception e) {
                             EM4ES.LOGGER.error("Failed to update trade UI", e);
                         }
-                    });
-                }
+                    }
+                });
             });
         }
     }
@@ -103,8 +103,7 @@ public abstract class MapReplenishMixin extends PassiveEntity {
     private int getRadiusForMerchant(MerchantEntity merchant) {
         if (merchant instanceof WanderingTraderEntity) {
             return EM4ES.WANDERING_TRADER_SEARCH_RADIUS;
-        }
-        else if (merchant instanceof VillagerEntity villager) {
+        } else if (merchant instanceof VillagerEntity villager) {
             int level = villager.getVillagerData().getLevel();
             switch (level) {
                 case 1: return EM4ES.CARTOGRAPHER_L1_SEARCH_RADIUS;
