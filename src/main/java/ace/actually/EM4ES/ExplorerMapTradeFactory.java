@@ -1,8 +1,8 @@
+// src/main/java/ace/actually/EM4ES/ExplorerMapTradeFactory.java
 package ace.actually.EM4ES;
 
 import it.unimi.dsi.fastutil.longs.LongSet;
 import net.minecraft.entity.Entity;
-import net.minecraft.entity.passive.VillagerEntity;
 import net.minecraft.item.ItemStack;
 import net.minecraft.registry.Registry;
 import net.minecraft.registry.RegistryKeys;
@@ -43,25 +43,22 @@ public class ExplorerMapTradeFactory implements TradeOffers.Factory {
     @Nullable
     @Override
     public TradeOffer create(Entity entity, Random random) {
-        if (!(entity.getWorld() instanceof ServerWorld world) || !(entity instanceof VillagerEntity villager)) {
+        if (!(entity.getWorld() instanceof ServerWorld world) || !(entity instanceof VillagerDataAccessor accessor)) {
             return null;
         }
 
-        Set<Identifier> alreadyOffered = ((VillagerDataAccessor) villager).getOfferedStructureMaps();
+        EM4ES.LOGGER.info("Starting map trade search for entity {} with radius {} chunks.", entity.getUuidAsString(), this.searchRadiusInChunks);
+
+        Set<Identifier> alreadyOffered = accessor.getOfferedStructureMaps();
+        EM4ES.LOGGER.info("Entity has already been offered {} maps.", alreadyOffered.size());
 
         ServerChunkManager chunkManager = world.getChunkManager();
         ChunkPos centerChunk = entity.getChunkPos();
-
-        // We only want to find one new structure to offer, up to mapCount
-        // The loop should iterate through potential chunks and try to find a *new* structure
-        // that hasn't been offered before and whose map can be created.
-
         Registry<Structure> structureRegistry = world.getRegistryManager().get(RegistryKeys.STRUCTURE);
 
         for (int radius = 0; radius <= this.searchRadiusInChunks; radius++) {
             for (int dx = -radius; dx <= radius; dx++) {
                 for (int dz = -radius; dz <= radius; dz++) {
-                    // Only check the outer ring if radius > 0
                     if (radius > 0 && Math.abs(dx) != radius && Math.abs(dz) != radius) {
                         continue;
                     }
@@ -72,33 +69,37 @@ public class ExplorerMapTradeFactory implements TradeOffers.Factory {
                     if (chunk != null) {
                         Map<Structure, LongSet> references = chunk.getStructureReferences();
                         if (references != null && !references.isEmpty()) {
+                            EM4ES.LOGGER.info("Found {} structure references in chunk at {}", references.size(), currentChunkPos.toString());
 
                             for (Structure structure : references.keySet()) {
                                 Identifier structureId = structureRegistry.getId(structure);
 
-                                // Check if the structure is valid, not already offered, and has a defined cost
-                                if (structureId != null && !alreadyOffered.contains(structureId) && EM4ES.getCostForStructure(structureId) != null) {
-                                    RegistryEntry<Structure> entryOpt = structureRegistry.getEntry(structure);
+                                if (structureId == null) continue;
 
-                                    // Get the StructureStart object to confirm it's a valid, generated structure instance
-                                    StructureStart structureStart = chunk.getStructureStart(entryOpt.value());
+                                if (alreadyOffered.contains(structureId)) {
+                                    //EM4ES.LOGGER.info("Skipping {}: Already offered.", structureId);
+                                    continue;
+                                }
 
-                                    if (structureStart != null) {
-                                        BlockPos structurePos = structureStart.getPos().getStartPos();
+                                if (EM4ES.getCostForStructure(structureId) == null) {
+                                    //EM4ES.LOGGER.info("Skipping {}: No cost defined.", structureId);
+                                    continue;
+                                }
 
-                                        // Try to create the map
-                                        ItemStack mapStack = EM4ES.makeMapFromPos(world, structurePos, structureId);
+                                EM4ES.LOGGER.info("Found potential new structure: {}", structureId);
+                                RegistryEntry<Structure> entryOpt = structureRegistry.getEntry(structure);
+                                StructureStart structureStart = chunk.getStructureStart(entryOpt.value());
 
-                                        // If the map was successfully created (not empty), we found a valid trade!
-                                        if (!mapStack.isEmpty()) {
-                                            // Add this new structure to the villager's memory to avoid re-offering it
-                                            alreadyOffered.add(structureId);
+                                if (structureStart != null) {
+                                    BlockPos structurePos = structureStart.getPos().getStartPos();
+                                    ItemStack mapStack = EM4ES.makeMapFromPos(world, structurePos, structureId);
 
-                                            // Create and return the trade offer
-                                            MapCost cost = EM4ES.getCostForStructure(structureId);
-                                            TradedItem buyItem = new TradedItem(cost.item(), cost.count());
-                                            return new TradeOffer(buyItem, Optional.empty(), mapStack, this.maxUses, 15, 0.2F);
-                                        }
+                                    if (!mapStack.isEmpty()) {
+                                        EM4ES.LOGGER.info("SUCCESS! Creating trade for map to {} at {}", structureId, structurePos);
+                                        alreadyOffered.add(structureId);
+                                        MapCost cost = EM4ES.getCostForStructure(structureId);
+                                        TradedItem buyItem = new TradedItem(cost.item(), cost.count());
+                                        return new TradeOffer(buyItem, Optional.empty(), mapStack, this.maxUses, 15, 0.2F);
                                     }
                                 }
                             }
@@ -107,7 +108,7 @@ public class ExplorerMapTradeFactory implements TradeOffers.Factory {
                 }
             }
         }
-        // If we iterate through all chunks within the search radius and don't find a new, valid structure to offer, return null.
+        EM4ES.LOGGER.info("Search finished. No new valid structures found to offer a map for.");
         return null;
     }
 }

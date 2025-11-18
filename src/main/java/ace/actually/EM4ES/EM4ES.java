@@ -1,3 +1,4 @@
+// src/main/java/ace/actually/EM4ES/EM4ES.java
 package ace.actually.EM4ES;
 
 import com.google.common.collect.ImmutableList;
@@ -51,47 +52,49 @@ public class EM4ES implements ModInitializer {
 
     // --- Configurable Gameplay Settings ---
     public static int WANDERING_TRADER_MAP_COUNT = 3;
+    public static int WANDERING_TRADER_SEARCH_RADIUS = 2500; // in blocks
+
     public static int CARTOGRAPHER_L1_MAP_COUNT = 3;
     public static int CARTOGRAPHER_L2_MAP_COUNT = 1;
     public static int CARTOGRAPHER_L3_MAP_COUNT = 1;
     public static int CARTOGRAPHER_L4_MAP_COUNT = 1;
     public static int CARTOGRAPHER_L5_MAP_COUNT = 1;
-    public static int CARTOGRAPHER_SEARCH_RADIUS = 1500;
-    public static int WANDERING_TRADER_SEARCH_RADIUS = 2500;
+
+    // NEW: Per-level search radius in chunks
+    public static int CARTOGRAPHER_L1_SEARCH_RADIUS = 50;  // ~800 blocks
+    public static int CARTOGRAPHER_L2_SEARCH_RADIUS = 75;  // ~1200 blocks
+    public static int CARTOGRAPHER_L3_SEARCH_RADIUS = 100; // ~1600 blocks
+    public static int CARTOGRAPHER_L4_SEARCH_RADIUS = 125; // ~2000 blocks
+    public static int CARTOGRAPHER_L5_SEARCH_RADIUS = 150; // ~2400 blocks
 
     @Override
     public void onInitialize() {
         ServerLifecycleEvents.SERVER_STARTED.register(this::onServerStarted);
 
-
-        // Livello 1: Novice (Raggio di 50 chunk, circa 800 blocchi)
+        // Trades now use the new configurable radius variables
         TradeOfferHelper.registerVillagerOffers(VillagerProfession.CARTOGRAPHER, 1, factories -> {
             for (int i = 0; i < CARTOGRAPHER_L1_MAP_COUNT; i++)
-                factories.add(new ExplorerMapTradeFactory(5, 50));
+                factories.add(new ExplorerMapTradeFactory(5, CARTOGRAPHER_L1_SEARCH_RADIUS));
         });
 
-        // Livello 2: Apprentice (Raggio di 75 chunk, circa 1200 blocchi)
         TradeOfferHelper.registerVillagerOffers(VillagerProfession.CARTOGRAPHER, 2, factories -> {
             for (int i = 0; i < CARTOGRAPHER_L2_MAP_COUNT; i++)
-                factories.add(new ExplorerMapTradeFactory(4, 75));
+                factories.add(new ExplorerMapTradeFactory(4, CARTOGRAPHER_L2_SEARCH_RADIUS));
         });
 
-        // Livello 3: Journeyman (Raggio di 100 chunk, circa 1600 blocchi)
         TradeOfferHelper.registerVillagerOffers(VillagerProfession.CARTOGRAPHER, 3, factories -> {
             for (int i = 0; i < CARTOGRAPHER_L3_MAP_COUNT; i++)
-                factories.add(new ExplorerMapTradeFactory(3, 100));
+                factories.add(new ExplorerMapTradeFactory(3, CARTOGRAPHER_L3_SEARCH_RADIUS));
         });
 
-        // Livello 4: Expert (Raggio di 125 chunk, circa 2000 blocchi)
         TradeOfferHelper.registerVillagerOffers(VillagerProfession.CARTOGRAPHER, 4, factories -> {
             for (int i = 0; i < CARTOGRAPHER_L4_MAP_COUNT; i++)
-                factories.add(new ExplorerMapTradeFactory(2, 125));
+                factories.add(new ExplorerMapTradeFactory(2, CARTOGRAPHER_L4_SEARCH_RADIUS));
         });
 
-        // Livello 5: Master (Raggio di 150 chunk, circa 2400 blocchi)
         TradeOfferHelper.registerVillagerOffers(VillagerProfession.CARTOGRAPHER, 5, factories -> {
             for (int i = 0; i < CARTOGRAPHER_L5_MAP_COUNT; i++)
-                factories.add(new ExplorerMapTradeFactory(1, 150));
+                factories.add(new ExplorerMapTradeFactory(1, CARTOGRAPHER_L5_SEARCH_RADIUS));
         });
     }
 
@@ -106,13 +109,17 @@ public class EM4ES implements ModInitializer {
                     writer.write("# --- Wandering Trader Settings ---\n");
                     writer.write("trader.mapCount = 3\n");
                     writer.write("trader.searchRadius = 2500\n\n");
-                    writer.write("# --- Cartographer Settings ---\n");
-                    writer.write("cartographer.searchRadius = 1500\n");
+                    writer.write("# --- Cartographer Settings (searchRadius is in chunks!) ---\n");
                     writer.write("cartographer.level1.mapCount = 3\n");
+                    writer.write("cartographer.level1.searchRadius = 50\n");
                     writer.write("cartographer.level2.mapCount = 1\n");
+                    writer.write("cartographer.level2.searchRadius = 75\n");
                     writer.write("cartographer.level3.mapCount = 1\n");
+                    writer.write("cartographer.level3.searchRadius = 100\n");
                     writer.write("cartographer.level4.mapCount = 1\n");
-                    writer.write("cartographer.level5.mapCount = 1\n\n");
+                    writer.write("cartographer.level4.searchRadius = 125\n");
+                    writer.write("cartographer.level5.mapCount = 1\n");
+                    writer.write("cartographer.level5.searchRadius = 150\n\n");
                     writer.write("# --- Structure Costs ---\n");
                     writer.write("default.cost = 10 minecraft:trial_key\n\n");
 
@@ -128,14 +135,23 @@ public class EM4ES implements ModInitializer {
                 props.load(fis);
             }
 
-            WANDERING_TRADER_MAP_COUNT = Integer.parseInt(props.getProperty("trader.mapCount", "10"));
+            WANDERING_TRADER_MAP_COUNT = Integer.parseInt(props.getProperty("trader.mapCount", "3"));
             WANDERING_TRADER_SEARCH_RADIUS = Integer.parseInt(props.getProperty("trader.searchRadius", "2500"));
-            CARTOGRAPHER_SEARCH_RADIUS = Integer.parseInt(props.getProperty("cartographer.searchRadius", "1500"));
-            CARTOGRAPHER_L1_MAP_COUNT = Integer.parseInt(props.getProperty("cartographer.level1.mapCount", "5"));
-            CARTOGRAPHER_L2_MAP_COUNT = Integer.parseInt(props.getProperty("cartographer.level2.mapCount", "3"));
-            CARTOGRAPHER_L3_MAP_COUNT = Integer.parseInt(props.getProperty("cartographer.level3.mapCount", "3"));
-            CARTOGRAPHER_L4_MAP_COUNT = Integer.parseInt(props.getProperty("cartographer.level4.mapCount", "3"));
-            CARTOGRAPHER_L5_MAP_COUNT = Integer.parseInt(props.getProperty("cartographer.level5.mapCount", "3"));
+
+            CARTOGRAPHER_L1_MAP_COUNT = Integer.parseInt(props.getProperty("cartographer.level1.mapCount", "3"));
+            CARTOGRAPHER_L1_SEARCH_RADIUS = Integer.parseInt(props.getProperty("cartographer.level1.searchRadius", "50"));
+
+            CARTOGRAPHER_L2_MAP_COUNT = Integer.parseInt(props.getProperty("cartographer.level2.mapCount", "1"));
+            CARTOGRAPHER_L2_SEARCH_RADIUS = Integer.parseInt(props.getProperty("cartographer.level2.searchRadius", "75"));
+
+            CARTOGRAPHER_L3_MAP_COUNT = Integer.parseInt(props.getProperty("cartographer.level3.mapCount", "1"));
+            CARTOGRAPHER_L3_SEARCH_RADIUS = Integer.parseInt(props.getProperty("cartographer.level3.searchRadius", "100"));
+
+            CARTOGRAPHER_L4_MAP_COUNT = Integer.parseInt(props.getProperty("cartographer.level4.mapCount", "1"));
+            CARTOGRAPHER_L4_SEARCH_RADIUS = Integer.parseInt(props.getProperty("cartographer.level4.searchRadius", "125"));
+
+            CARTOGRAPHER_L5_MAP_COUNT = Integer.parseInt(props.getProperty("cartographer.level5.mapCount", "1"));
+            CARTOGRAPHER_L5_SEARCH_RADIUS = Integer.parseInt(props.getProperty("cartographer.level5.searchRadius", "150"));
 
             List<String> lines = Files.readAllLines(configFile.toPath());
             Map<Identifier, MapCost> loadedCosts = new HashMap<>();
@@ -197,14 +213,11 @@ public class EM4ES implements ModInitializer {
                     WorldChunk chunk = chunkManager.getWorldChunk(currentChunkPos.x, currentChunkPos.z, false);
 
                     if (chunk != null) {
-                        // --- THE FIX IS HERE ---
-                        // The method returns a Map of the raw Structure, not the RegistryEntry.
                         Map<Structure, LongSet> references = chunk.getStructureReferences();
 
                         // We must get the raw .value() from our RegistryEntry to check the map.
                         if (references != null && references.containsKey(structureEntry.value())) {
-
-                            // IMPORTANT: We use the RegistryEntry to get the start pos, not the raw value.
+                            // The fix: removed the redundant .getStartPos()
                             BlockPos structurePos = chunk.getStructureStart(structureEntry.value()).getPos().getStartPos();
                             LOGGER.info("Found structure {} in loaded chunk at {}. Creating map.", structureId, structurePos);
                             return makeMapFromPos(world, structurePos, structureId);

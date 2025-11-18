@@ -1,7 +1,7 @@
 package ace.actually.EM4ES.mixin;
 
 import ace.actually.EM4ES.VillagerDataAccessor;
-import net.minecraft.entity.passive.VillagerEntity;
+import net.minecraft.entity.passive.WanderingTraderEntity;
 import net.minecraft.nbt.NbtCompound;
 import net.minecraft.nbt.NbtElement;
 import net.minecraft.nbt.NbtList;
@@ -16,11 +16,9 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 import java.util.HashSet;
 import java.util.Set;
 
-// CHANGE 1: Made the class abstract
-@Mixin(VillagerEntity.class)
-public abstract class VillagerEntityMixin implements VillagerDataAccessor {
+@Mixin(WanderingTraderEntity.class)
+public abstract class WanderingTraderEntityMixin implements VillagerDataAccessor {
 
-    // CHANGE 2: Removed the 'final' keyword
     @Unique
     private Set<Identifier> em4es_offeredStructureMaps = new HashSet<>();
 
@@ -31,9 +29,8 @@ public abstract class VillagerEntityMixin implements VillagerDataAccessor {
 
     @Inject(method = "writeCustomDataToNbt", at = @At("TAIL"))
     private void writeOfferedMapsToNbt(NbtCompound nbt, CallbackInfo ci) {
-        NbtList offeredList = new NbtList();
-        // Check to prevent writing an empty list if it's not necessary
         if (!this.em4es_offeredStructureMaps.isEmpty()) {
+            NbtList offeredList = new NbtList();
             for (Identifier id : this.em4es_offeredStructureMaps) {
                 offeredList.add(NbtString.of(id.toString()));
             }

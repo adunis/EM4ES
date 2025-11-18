@@ -4,7 +4,9 @@
   "package": "ace.actually.EM4ES.mixin",
   "compatibilityLevel": "JAVA_16",
   "mixins": [
-    "WanderingMixin"
+    "VillagerEntityMixin",
+    "WanderingMixin",
+    "WanderingTraderEntityMixin"
   ],
 
   "injectors": {
