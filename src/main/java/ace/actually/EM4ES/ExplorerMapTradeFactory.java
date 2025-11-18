@@ -15,87 +15,120 @@ import net.minecraft.util.math.random.Random;
 import net.minecraft.village.TradeOffer;
 import net.minecraft.village.TradeOffers;
 import net.minecraft.village.TradedItem;
+import net.minecraft.world.gen.chunk.ChunkGenerator;
 import net.minecraft.world.gen.structure.Structure;
 import org.jetbrains.annotations.Nullable;
 
 import java.util.*;
+import java.util.stream.Collectors;
 
 public class ExplorerMapTradeFactory implements TradeOffers.Factory {
     private final int maxUses;
     private final int searchRadiusInBlocks;
 
+    // Cache valid keys to avoid iterating the registry and re-checking costs on every single trade attempt.
+    private static List<RegistryKey<Structure>> CACHED_STRUCTURE_KEYS = null;
+
     public ExplorerMapTradeFactory(int maxUses, int searchRadiusInChunks) {
         this.maxUses = maxUses;
-        this.searchRadiusInBlocks = searchRadiusInChunks * 16;
+        this.searchRadiusInBlocks = searchRadiusInChunks * 16; // Convert chunks to blocks
     }
 
     @Nullable
     @Override
     public TradeOffer create(Entity entity, Random random) {
+        // 1. VALIDATION
         if (!(entity.getWorld() instanceof ServerWorld world) || !(entity instanceof VillagerDataAccessor accessor)) {
             return null;
         }
 
-        Set<Identifier> alreadyOffered = accessor.getOfferedStructureMaps();
         BlockPos origin = entity.getBlockPos();
         Registry<Structure> structureRegistry = world.getRegistryManager().get(RegistryKeys.STRUCTURE);
 
-        List<RegistryKey<Structure>> possibleStructures = new ArrayList<>();
-        for (Identifier id : structureRegistry.getIds()) {
-            if (!alreadyOffered.contains(id) && EM4ES.getCostForStructure(id) != null) {
-                structureRegistry.getKey(structureRegistry.get(id)).ifPresent(possibleStructures::add);
+        // 2. INITIALIZE CACHE (ONCE)
+        if (CACHED_STRUCTURE_KEYS == null) {
+            initializeCache(structureRegistry);
+        }
+
+        Set<Identifier> alreadyOffered = accessor.getOfferedStructureMaps();
+        ChunkGenerator chunkGenerator = world.getChunkManager().getChunkGenerator();
+
+        // 3. FILTER CANDIDATES
+        // Remove structures this specific villager has already sold.
+        List<RegistryKey<Structure>> candidates = CACHED_STRUCTURE_KEYS.stream()
+                .filter(key -> !alreadyOffered.contains(key.getValue()))
+                .collect(Collectors.toList());
+
+        if (candidates.isEmpty()) return null;
+
+        // 4. SHUFFLE
+        // Essential because we stop on the first match. This ensures we get random structures,
+        // not just the first one in the registry alphabet.
+        Collections.shuffle(candidates);
+
+        Pair<BlockPos, RegistryEntry<Structure>> bestMatch = null;
+        long startTime = System.currentTimeMillis();
+        int checkedCount = 0;
+
+        // 5. SEARCH LOOP
+        for (RegistryKey<Structure> key : candidates) {
+
+            // A. Time Limit Check (Prevents server lag)
+            if (System.currentTimeMillis() - startTime > EM4ES.MAX_SEARCH_TIME_MS) {
+                EM4ES.LOGGER.debug("Search timed out (>{}ms). Stopping.", EM4ES.MAX_SEARCH_TIME_MS);
+                break;
             }
-        }
 
-        if (possibleStructures.isEmpty()) {
-            EM4ES.LOGGER.warn("No new valid structure found to search for entity {}.", entity.getUuidAsString());
-            return null;
-        }
+            // B. Sample Size Check (Prevents checking 600 structures)
+            if (checkedCount >= EM4ES.SEARCH_SAMPLE_SIZE) {
+                EM4ES.LOGGER.debug("Search hit limit of {} attempts. Stopping.", EM4ES.SEARCH_SAMPLE_SIZE);
+                break;
+            }
+            checkedCount++;
 
-        Collections.shuffle(possibleStructures);
-        List<RegistryKey<Structure>> searchSample = possibleStructures.subList(0, Math.min(possibleStructures.size(), EM4ES.SEARCH_SAMPLE_SIZE));
+            try {
+                Optional<RegistryEntry.Reference<Structure>> entryOpt = structureRegistry.getEntry(key);
+                if (entryOpt.isEmpty()) continue;
 
-        EM4ES.LOGGER.info("Searching a sample of {} structures (out of {} possible).", searchSample.size(), possibleStructures.size());
+                RegistryEntryList<Structure> searchList = RegistryEntryList.of(entryOpt.get());
 
-        List<Pair<BlockPos, RegistryEntry<Structure>>> nearbyCandidates = new ArrayList<>();
-        for (RegistryKey<Structure> structureKey : searchSample) {
-            Optional<RegistryEntry.Reference<Structure>> entryOptional = structureRegistry.getEntry(structureKey);
-            if (entryOptional.isPresent()) {
-                RegistryEntryList<Structure> searchList = RegistryEntryList.of(entryOptional.get());
-                Pair<BlockPos, RegistryEntry<Structure>> result = world.getChunkManager().getChunkGenerator().locateStructure(
+                // C. Locate Structure (Heavy Operation)
+                // 'false' for skipExistingChunks is usually faster for finding *new* things
+                Pair<BlockPos, RegistryEntry<Structure>> result = chunkGenerator.locateStructure(
                         world, searchList, origin, searchRadiusInBlocks, false
                 );
+
                 if (result != null) {
-                    nearbyCandidates.add(result);
+                    bestMatch = result;
+                    // D. STOP IMMEDIATELY
+                    // We found a valid structure. Do not waste time looking for a "closer" one.
+                    // This is the key to fixing the "Search takes 30 seconds" issue.
+                    EM4ES.LOGGER.debug("Match found: {}. Stopping search immediately.", key.getValue());
+                    break;
                 }
+            } catch (Exception e) {
+                // If a specific modded structure crashes the locator, log it and skip to the next one
+                // so the thread doesn't die.
+                EM4ES.LOGGER.debug("Failed to locate structure {}: {}", key.getValue(), e.getMessage());
             }
         }
 
-        if (nearbyCandidates.isEmpty()) {
-            EM4ES.LOGGER.warn("No structure found in the sample for entity {}.", entity.getUuidAsString());
-            return null;
+        // 6. CREATE TRADE OFFER
+        if (bestMatch == null) {
+            return null; // Found nothing within limits
         }
 
-        // --- THE FIX IS HERE ---
-        // Sort candidates by horizontal distance (ignoring Y-axis)
-        nearbyCandidates.sort(Comparator.comparingDouble(pair -> {
-            BlockPos pos = pair.getFirst();
-            double dx = pos.getX() - origin.getX();
-            double dz = pos.getZ() - origin.getZ();
-            return dx * dx + dz * dz; // Manual calculation of squared distance on X and Z
-        }));
-        // --- END OF FIX ---
+        BlockPos structurePos = bestMatch.getFirst();
+        Identifier structureId = bestMatch.getSecond().getKey().orElseThrow().getValue();
 
-        Pair<BlockPos, RegistryEntry<Structure>> bestCandidate = nearbyCandidates.get(0);
-
-        BlockPos structurePos = bestCandidate.getFirst();
-        Identifier structureId = bestCandidate.getSecond().getKey().orElseThrow().getValue();
-
-        EM4ES.LOGGER.info("Closest structure chosen from sample: {} at {}", structureId, structurePos);
-
+        // Generate the map item
         ItemStack mapStack = EM4ES.makeMapFromPos(world, structurePos, structureId);
+
         if (!mapStack.isEmpty()) {
+            // Mark as offered so this villager doesn't sell the same map twice
             alreadyOffered.add(structureId);
+
+            // Get cost from config
             MapCost cost = EM4ES.getCostForStructure(structureId);
             TradedItem buyItem = new TradedItem(cost.item(), cost.count());
 
@@ -103,5 +136,22 @@ public class ExplorerMapTradeFactory implements TradeOffers.Factory {
         }
 
         return null;
+    }
+
+    /**
+     * Caches the list of all valid structure keys from the registry.
+     * Only includes structures that have a configured cost (which is all of them by default).
+     */
+    private synchronized void initializeCache(Registry<Structure> registry) {
+        if (CACHED_STRUCTURE_KEYS != null) return;
+
+        List<RegistryKey<Structure>> keys = new ArrayList<>();
+        for (Identifier id : registry.getIds()) {
+            if (EM4ES.getCostForStructure(id) != null) {
+                registry.getKey(registry.get(id)).ifPresent(keys::add);
+            }
+        }
+        CACHED_STRUCTURE_KEYS = keys;
+        EM4ES.LOGGER.info("Initialized structure cache with {} entries.", keys.size());
     }
 }

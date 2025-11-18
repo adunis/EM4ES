@@ -1,4 +1,3 @@
-// src/main/java/ace/actually/EM4ES/EM4ES.java
 package ace.actually.EM4ES;
 
 import com.google.common.collect.ImmutableList;
@@ -36,18 +35,18 @@ public class EM4ES implements ModInitializer {
     public static final String MOD_ID = "em4es";
     public static final Logger LOGGER = LogManager.getLogger(MOD_ID);
 
-    // --- Config Fields ---
+    // --- Data Structures ---
     private static volatile Map<Identifier, MapCost> STRUCTURE_COSTS = Collections.synchronizedMap(new HashMap<>());
-    private static volatile List<Identifier> VALID_STRUCTURE_IDS = ImmutableList.of();
+    public static volatile List<Identifier> VALID_STRUCTURE_IDS = ImmutableList.of();
     private static MapCost defaultCost = MapCost.DEFAULT;
 
-    // NUOVA OPZIONE DI CONFIGURAZIONE
-    public static int SEARCH_SAMPLE_SIZE = 40;
-
-    // Un gruppo di 4 thread dedicati alla ricerca delle mappe in background.
+    // --- Thread Pool ---
     public static final ExecutorService MAP_SEARCH_EXECUTOR = Executors.newFixedThreadPool(4);
 
-    // --- Configurable Gameplay Settings ---
+    // --- Configurable Settings ---
+    public static int SEARCH_SAMPLE_SIZE = 40;
+    public static long MAX_SEARCH_TIME_MS = 1500;
+
     public static int WANDERING_TRADER_MAP_COUNT = 20;
     public static int WANDERING_TRADER_SEARCH_RADIUS = 2500;
 
@@ -74,7 +73,6 @@ public class EM4ES implements ModInitializer {
     @Override
     public void onInitialize() {
         ServerLifecycleEvents.SERVER_STARTED.register(this::onServerStarted);
-        // Nessun TradeOfferHelper qui, è gestito dinamicamente dai mixin
     }
 
     private void onServerStarted(MinecraftServer server) {
@@ -84,13 +82,18 @@ public class EM4ES implements ModInitializer {
                 LOGGER.info("Structure cost config not found. Creating a new default one...");
                 configFile.getParentFile().mkdirs();
                 try (FileWriter writer = new FileWriter(configFile)) {
-                    writer.write("# This file configures the costs and behavior for explorer maps.\n\n");
-                    writer.write("\n# Defines how many random structures to check at once to find the nearest one. Higher values are more accurate but slower.\n");
-                    writer.write("search.sampleSize = 40\n\n");
+                    writer.write("# This file configures the costs and behavior for explorer maps.\n");
+                    writer.write("# Restart the server to apply changes.\n\n");
+
+                    writer.write("# --- Performance Settings ---\n");
+                    writer.write("search.sampleSize = 40\n");
+                    writer.write("search.maxTimeMs = 1500\n\n");
+
                     writer.write("# --- Wandering Trader Settings ---\n");
                     writer.write("trader.mapCount = 20\n");
                     writer.write("trader.searchRadius = 2500\n\n");
-                    writer.write("# --- Cartographer Settings (searchRadius is in chunks!) ---\n");
+
+                    writer.write("# --- Cartographer Settings ---\n");
                     writer.write("cartographer.level1.mapCount = 5\n");
                     writer.write("cartographer.level1.searchRadius = 500\n");
                     writer.write("cartographer.level1.maxUses = 1\n");
@@ -106,12 +109,13 @@ public class EM4ES implements ModInitializer {
                     writer.write("cartographer.level5.mapCount = 3\n");
                     writer.write("cartographer.level5.searchRadius = 2500\n");
                     writer.write("cartographer.level5.maxUses = 1\n\n");
+
                     writer.write("# --- Structure Costs ---\n");
-                    writer.write("default.cost = 1 minecraft:trial_key\n\n");
+                    writer.write("default.cost = 1 minecraft:emerald\n\n");
 
                     Registry<Structure> structureRegistry = server.getRegistryManager().get(RegistryKeys.STRUCTURE);
                     for (Identifier id : structureRegistry.getIds()) {
-                        writer.write(id.toString() + " = 1 minecraft:trial_key\n");
+                        writer.write(id.toString() + " = 1 minecraft:emerald\n");
                     }
                 }
             }
@@ -121,9 +125,10 @@ public class EM4ES implements ModInitializer {
                 props.load(fis);
             }
 
+            // Load Settings
             SEARCH_SAMPLE_SIZE = Integer.parseInt(props.getProperty("search.sampleSize", "40"));
+            MAX_SEARCH_TIME_MS = Long.parseLong(props.getProperty("search.maxTimeMs", "1500"));
 
-            // Carica le impostazioni dal file di configurazione
             WANDERING_TRADER_MAP_COUNT = Integer.parseInt(props.getProperty("trader.mapCount", "20"));
             WANDERING_TRADER_SEARCH_RADIUS = Integer.parseInt(props.getProperty("trader.searchRadius", "2500"));
 
@@ -147,37 +152,49 @@ public class EM4ES implements ModInitializer {
             CARTOGRAPHER_L5_SEARCH_RADIUS = Integer.parseInt(props.getProperty("cartographer.level5.searchRadius", "2500"));
             CARTOGRAPHER_L5_MAX_USES = Integer.parseInt(props.getProperty("cartographer.level5.maxUses", "1"));
 
-            // Carica i costi delle strutture
+            // Load Costs
             List<String> lines = Files.readAllLines(configFile.toPath());
             Map<Identifier, MapCost> loadedCosts = new HashMap<>();
             List<Identifier> validIds = new ArrayList<>();
+
             for (String line : lines) {
                 line = line.trim();
                 if (line.startsWith("#") || line.isEmpty() || !line.contains("=")) continue;
+
                 String[] parts = line.split("=", 2);
                 String key = parts[0].trim();
                 String value = parts[1].trim();
+
                 if (key.equals("default.cost")) {
                     defaultCost = MapCost.fromString(value);
                     continue;
                 }
+
                 if (!key.contains(":")) continue;
+
+                // FIX 1: Use Identifier.tryParse instead of new Identifier()
                 Identifier structureId = Identifier.tryParse(key);
+
                 if (structureId != null) {
+                    // FIX 2: Use MapCost.fromString() instead of the broken parseCost method
                     loadedCosts.put(structureId, MapCost.fromString(value));
                     validIds.add(structureId);
                 }
             }
+
             STRUCTURE_COSTS = Collections.synchronizedMap(loadedCosts);
             VALID_STRUCTURE_IDS = Collections.unmodifiableList(validIds);
-            LOGGER.info("Successfully loaded costs for {} structures.", STRUCTURE_COSTS.size());
+
+            LOGGER.info("EM4ES Config Loaded: Structures={}, SampleSize={}, TimeLimit={}ms",
+                    STRUCTURE_COSTS.size(), SEARCH_SAMPLE_SIZE, MAX_SEARCH_TIME_MS);
 
         } catch (Exception e) {
             LOGGER.error("FATAL: Failed to read, parse, or create config file!", e);
         }
     }
 
-    // --- Metodi Utilitari (restano invariati) ---
+    // --- Helper Methods ---
+
     public static MapCost getCostForStructure(Identifier structureId) {
         return STRUCTURE_COSTS.getOrDefault(structureId, defaultCost);
     }
@@ -205,4 +222,7 @@ public class EM4ES implements ModInitializer {
         name = name.contains(":") ? name.substring(name.indexOf(':') + 1) : name.trim();
         return WordUtils.capitalizeFully(name.replace('_', ' '));
     }
+
+    // Removed the broken private parseCost method entirely.
+    // We use MapCost.fromString() instead.
 }
