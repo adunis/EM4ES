@@ -127,21 +127,40 @@ public class EM4ES implements ModInitializer {
                 configFile.getParentFile().mkdirs();
                 try (FileWriter writer = new FileWriter(configFile)) {
                     writer.write("# EM4ES Configuration\n\n");
-                    writer.write("search.sampleSize = " + SEARCH_SAMPLE_SIZE + "\n");
-                    writer.write("search.maxTimeMs = " + MAX_SEARCH_TIME_MS + "\n\n");
+                    writer.write("# This file configures the costs and behavior for explorer maps.\n");
+                    writer.write("# Restart the server to apply changes.\n\n");
 
-                    writer.write("# --- Wandering Trader ---\n");
-                    writer.write("trader.mapCount = " + WANDERING_TRADER_MAP_COUNT + "\n");
-                    writer.write("trader.searchRadius = " + WANDERING_TRADER_SEARCH_RADIUS + "\n\n");
+                    writer.write("# --- Performance Settings ---\n");
+                    writer.write("search.sampleSize = 40\n");
+                    writer.write("search.maxTimeMs = 1500\n\n");
 
-                    writer.write("# --- Cartographer ---\n");
-                    writer.write("cartographer.level1.mapCount = " + CARTOGRAPHER_L1_MAP_COUNT + "\n");
-                    writer.write("cartographer.level1.searchRadius = " + CARTOGRAPHER_L1_SEARCH_RADIUS + "\n");
-                    writer.write("cartographer.level1.maxUses = " + CARTOGRAPHER_L1_MAX_USES + "\n");
-                    // ... (You can add other levels here if you wish to expose them in the file) ...
+                    writer.write("# --- Wandering Trader Settings ---\n");
+                    writer.write("trader.mapCount = 3\n");
+                    writer.write("trader.searchRadius = 1000\n\n");
 
-                    writer.write("\n# --- Loot Tables ---\n");
-                    writer.write("loot.chance = " + LOOT_CHANCE + "\n\n");
+                    writer.write("# --- Cartographer Settings ---\n");
+                    writer.write("cartographer.level1.mapCount = 2\n");
+                    writer.write("cartographer.level1.searchRadius = 500\n");
+                    writer.write("cartographer.level1.maxUses = 1\n");
+                    writer.write("cartographer.level2.mapCount = 2\n");
+                    writer.write("cartographer.level2.searchRadius = 750\n");
+                    writer.write("cartographer.level2.maxUses = 1\n");
+                    writer.write("cartographer.level3.mapCount = 2\n");
+                    writer.write("cartographer.level3.searchRadius = 1000\n");
+                    writer.write("cartographer.level3.maxUses = 1\n");
+                    writer.write("cartographer.level4.mapCount = 2\n");
+                    writer.write("cartographer.level4.searchRadius = 1500\n");
+                    writer.write("cartographer.level4.maxUses = 1\n");
+                    writer.write("cartographer.level5.mapCount = 2\n");
+                    writer.write("cartographer.level5.searchRadius = 2500\n");
+                    writer.write("cartographer.level5.maxUses = 1\n\n");
+
+                    writer.write("# --- Structure Costs ---\n");
+                    writer.write("default.cost = 1 minecraft:emerald\n\n");
+
+                    writer.write("# --- Loot Table Settings ---\n");
+                    writer.write("# Chance (0.0 to 1.0) to find an Unidentified Map in chests.\n");
+                    writer.write("loot.chance = 0.05\n\n");
 
                     writer.write("# --- Structure Costs ---\n");
                     writer.write("default.cost = 1 minecraft:emerald\n\n");
