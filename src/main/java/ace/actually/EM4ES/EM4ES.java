@@ -41,7 +41,7 @@ public class EM4ES implements ModInitializer {
     private static MapCost defaultCost = MapCost.DEFAULT;
 
     // --- Thread Pool ---
-    public static final ExecutorService MAP_SEARCH_EXECUTOR = Executors.newFixedThreadPool(4);
+    public static final ExecutorService MAP_SEARCH_EXECUTOR = Executors.newSingleThreadExecutor();
 
     // --- Configurable Settings ---
     public static int SEARCH_SAMPLE_SIZE = 40;
@@ -90,23 +90,23 @@ public class EM4ES implements ModInitializer {
                     writer.write("search.maxTimeMs = 1500\n\n");
 
                     writer.write("# --- Wandering Trader Settings ---\n");
-                    writer.write("trader.mapCount = 20\n");
-                    writer.write("trader.searchRadius = 2500\n\n");
+                    writer.write("trader.mapCount = 3\n");
+                    writer.write("trader.searchRadius = 1000\n\n");
 
                     writer.write("# --- Cartographer Settings ---\n");
-                    writer.write("cartographer.level1.mapCount = 5\n");
+                    writer.write("cartographer.level1.mapCount = 2\n");
                     writer.write("cartographer.level1.searchRadius = 500\n");
                     writer.write("cartographer.level1.maxUses = 1\n");
-                    writer.write("cartographer.level2.mapCount = 5\n");
+                    writer.write("cartographer.level2.mapCount = 2\n");
                     writer.write("cartographer.level2.searchRadius = 750\n");
                     writer.write("cartographer.level2.maxUses = 1\n");
-                    writer.write("cartographer.level3.mapCount = 5\n");
+                    writer.write("cartographer.level3.mapCount = 2\n");
                     writer.write("cartographer.level3.searchRadius = 1000\n");
                     writer.write("cartographer.level3.maxUses = 1\n");
-                    writer.write("cartographer.level4.mapCount = 5\n");
+                    writer.write("cartographer.level4.mapCount = 2\n");
                     writer.write("cartographer.level4.searchRadius = 1500\n");
                     writer.write("cartographer.level4.maxUses = 1\n");
-                    writer.write("cartographer.level5.mapCount = 3\n");
+                    writer.write("cartographer.level5.mapCount = 2\n");
                     writer.write("cartographer.level5.searchRadius = 2500\n");
                     writer.write("cartographer.level5.maxUses = 1\n\n");
 
