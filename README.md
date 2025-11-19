@@ -19,7 +19,7 @@ This lightweight, server-side mod expands the exploration experience by introduc
     *   A brand new **Novice (Level 1) Cartographer** will offer **3** unique structure maps (configurable).
     *   As you level up a Cartographer, it will unlock additional map trades at each new professional level (Apprentice, Journeyman, Expert, and Master).
     *   The **Wandering Trader** will spawn with a stock of **5** random structure maps (configurable).
-*   **Fully Configurable Economy:** The cost for every single map is completely customizable! By default, all maps cost **1 Trial Key**, but you can change this to any item and any amount you want.
+*   **Fully Configurable Economy:** The cost for every single map is completely customizable! By default, all maps cost **1 Emerald**, but you can change this to any item and any amount you want.
 *   **Controlled Search Radius:** To ensure balanced gameplay, search radii are configurable per trader type and villager level (e.g., Novice searches 500 blocks, Master searches 2500 blocks).
 *   **🔄 Infinite Restocking System:** Never run out of adventures! **EM4ES** includes a restocking system that allows you to farm maps without lag. Instead of the trade simply locking (Red X), it will briefly turn into a **"Restocking..."** icon (represented by a Clock).
 
