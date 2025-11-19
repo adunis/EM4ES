@@ -8,9 +8,9 @@
     "WanderingMixin",
     "WanderingTraderEntityMixin",
     "VillagerEntityMixinTrades",
-    "VillagerEntityMixinTradeCycle"
+    "VillagerEntityMixinTradeCycle",
+    "WanderingTraderEntityMixinTradeCycle"
   ],
-
   "injectors": {
     "defaultRequire": 1
   }
